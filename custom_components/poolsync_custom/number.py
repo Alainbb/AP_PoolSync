@@ -15,79 +15,52 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.exceptions import HomeAssistantError # For service call errors
-from homeassistant.util.unit_system import METRIC_SYSTEM
-
+from homeassistant.exceptions import HomeAssistantError  # For service call errors
 
 from .const import (
     DOMAIN,
     CHLORINATOR_ID,
     HEATPUMP_ID,
-    #DEFAULT_CHLOR_OUTPUT_MIN,
-    #DEFAULT_CHLOR_OUTPUT_MAX,
-    #DEFAULT_CHLOR_OUTPUT_STEP,
-    #NUMBER_KEY_CHLOR_OUTPUT,
 )
 from .coordinator import PoolSyncDataUpdateCoordinator
-from .sensor import _get_value_from_path # Reuse helper from sensor.py
+from .sensor import _get_value_from_path  # Reuse helper from sensor.py
 
 _LOGGER = logging.getLogger(__name__)
 
 NUMBER_DESCRIPTIONS_CHLOR: tuple[NumberEntityDescription, List[str], Optional[Callable[[Any], Any]]] = (
     (NumberEntityDescription(
-        key="chlor_output_control", #NUMBER_KEY_CHLOR_OUTPUT, # "chlor_output_control"
-        name="Chlorinator Output", # This will be the entity name
-        icon="mdi:knob", # Using a knob icon for control
+        key="chlor_output_control",
+        name="Chlorinator Output",
+        icon="mdi:knob",
         native_unit_of_measurement=PERCENTAGE,
-        native_min_value=0,#DEFAULT_CHLOR_OUTPUT_MIN, # e.g., 0
-        native_max_value=100,#DEFAULT_CHLOR_OUTPUT_MAX, # e.g., 100
-        native_step=1,#DEFAULT_CHLOR_OUTPUT_STEP,     # e.g., 1 or 5
-        mode=NumberMode.SLIDER, # Or NumberMode.BOX
-    ), ["devices", CHLORINATOR_ID, "config", "chlorOutput"], None), # Path to get current value
+        native_min_value=0,
+        native_max_value=100,
+        native_step=1,
+        mode=NumberMode.SLIDER,
+    ), ["devices", CHLORINATOR_ID, "config", "chlorOutput"], None),
 )
 
-NUMBER_DESCRIPTIONS_HEATPUMP_F: tuple[NumberEntityDescription, List[str], Optional[Callable[[Any], Any]]] = (
+# Force Celsius for heatpump (min/max/step adjusted for °C)
+NUMBER_DESCRIPTIONS_HEATPUMP: tuple[NumberEntityDescription, List[str], Optional[Callable[[Any], Any]]] = (
     (NumberEntityDescription(
-        key="temperature_output_control", #NUMBER_KEY_CHLOR_OUTPUT, # "chlor_output_control"
-        name="Temperature Output", # This will be the entity name
-        icon="mdi:knob", # Using a knob icon for control
-        native_unit_of_measurement=UnitOfTemperature.FAHRENHEIT,
-        native_min_value=40, # e.g., 0
-        native_max_value=104, # e.g., 100
-        native_step=1,     # e.g., 1 or 5
-        mode=NumberMode.BOX, # Or NumberMode.BOX
-    ), ["devices", HEATPUMP_ID, "config", "setpoint"], None), # Path to get current value
-    (NumberEntityDescription(
-        key="heat_mode", #NUMBER_KEY_CHLOR_OUTPUT, # "chlor_output_control"
-        name="heat_mode", # This will be the entity name
-        icon="mdi:knob", # Using a knob icon for control
-        native_min_value=0, # e.g., 0
-        native_max_value=2, # e.g., 100
-        native_step=1,     # e.g., 1 or 5
-        mode=NumberMode.BOX, # Or NumberMode.BOX
-    ), ["devices", HEATPUMP_ID, "config", "mode"], None), # Path to get current value
-)
-
-NUMBER_DESCRIPTIONS_HEATPUMP_C: tuple[NumberEntityDescription, List[str], Optional[Callable[[Any], Any]]] = (
-    (NumberEntityDescription(
-        key="temperature_output_control", #NUMBER_KEY_CHLOR_OUTPUT, # "chlor_output_control"
-        name="Temperature Output", # This will be the entity name
-        icon="mdi:knob", # Using a knob icon for control
+        key="temperature_output_control",
+        name="Temperature Output",
+        icon="mdi:knob",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        native_min_value=5, # e.g., 0
-        native_max_value=40, # e.g., 100
-        native_step=0.5,     # e.g., 1 or 5
-        mode=NumberMode.SLIDER, # Or NumberMode.BOX
-    ), ["devices", HEATPUMP_ID, "config", "setpoint"], None), # Path to get current value
+        native_min_value=5,
+        native_max_value=40,
+        native_step=0.5,
+        mode=NumberMode.SLIDER,
+    ), ["devices", HEATPUMP_ID, "config", "setpoint"], None),
     (NumberEntityDescription(
-        key="heat_mode", #NUMBER_KEY_CHLOR_OUTPUT, # "chlor_output_control"
-        name="heat_mode", # This will be the entity name
-        icon="mdi:knob", # Using a knob icon for control
-        native_min_value=0, # e.g., 0
-        native_max_value=2, # e.g., 100
-        native_step=1,     # e.g., 1 or 5
-        mode=NumberMode.BOX, # Or NumberMode.BOX
-    ), ["devices", HEATPUMP_ID, "config", "mode"], None), # Path to get current value
+        key="heat_mode",
+        name="heat_mode",
+        icon="mdi:knob",
+        native_min_value=0,
+        native_max_value=2,
+        native_step=1,
+        mode=NumberMode.BOX,
+    ), ["devices", HEATPUMP_ID, "config", "mode"], None),
 )
 
 async def async_setup_entry(
@@ -153,14 +126,8 @@ async def async_setup_entry(
             except Exception as e:
                 _LOGGER.exception("NUMBER_PLATFORM: Error creating instance for %s: %s", description.key, e)
 
-    is_metric = hass.config.units is METRIC_SYSTEM
     if heatpump_id != "-1":
-        if is_metric:
-            number_descriptions_heatpump = NUMBER_DESCRIPTIONS_HEATPUMP_C
-        else:
-            number_descriptions_heatpump = NUMBER_DESCRIPTIONS_HEATPUMP_F
-            
-        for description, data_path, value_fn in number_descriptions_heatpump:
+        for description, data_path, value_fn in NUMBER_DESCRIPTIONS_HEATPUMP:
             _LOGGER.debug("NUMBER_PLATFORM: Processing number entity description for key: %s", description.key)
             data_path[1] = heatpump_id
             current_value = _get_value_from_path(coordinator.data, data_path)
@@ -207,7 +174,7 @@ class PoolSyncChlorOutputNumberEntity(CoordinatorEntity[PoolSyncDataUpdateCoordi
         super().__init__(coordinator)
         self.entity_description = description
         self._data_path = data_path
-        self._value_fn = value_fn # Not used for native_value here, but kept for pattern consistency
+        self._value_fn = value_fn  # Not used for native_value here, but kept for pattern consistency
 
         self._attr_unique_id = f"{coordinator.mac_address}_{description.key}"
         self._attr_device_info = coordinator.device_info
@@ -219,13 +186,15 @@ class PoolSyncChlorOutputNumberEntity(CoordinatorEntity[PoolSyncDataUpdateCoordi
 
     @property
     def native_value(self) -> Optional[float]:
-        """Return the current value of the number entity."""
+        """Return the current value of the number entity (convert from °F if temperature)."""
         value = _get_value_from_path(self.coordinator.data, self._data_path)
-        # _LOGGER.debug("NUMBER_ENTITY %s: native_value raw from path %s: %s", self.entity_description.key, self._data_path, value)
         if value is None:
             return None
         try:
             num_value = float(value)
+            # Convert API °F to °C if this is a temperature entity
+            if self.entity_description.native_unit_of_measurement == UnitOfTemperature.CELSIUS:
+                num_value = (num_value - 32) * 5 / 9
             return num_value
         except (ValueError, TypeError):
             _LOGGER.error(
@@ -235,8 +204,12 @@ class PoolSyncChlorOutputNumberEntity(CoordinatorEntity[PoolSyncDataUpdateCoordi
             return None
 
     async def async_set_native_value(self, value: float) -> None:
-        """Update the current value."""
-        new_value = int(value) # API expects an integer for percentage
+        """Update the current value (convert to °F if temperature before sending)."""
+        new_value = value
+        # Convert °C to °F if this is a temperature entity (API expects °F)
+        if self.entity_description.native_unit_of_measurement == UnitOfTemperature.CELSIUS:
+            new_value = (new_value * 9 / 5) + 32
+        new_value = int(new_value)  # API expects integer
         datapath = self._data_path
         _LOGGER.info(str(datapath))
         
@@ -277,18 +250,4 @@ class PoolSyncChlorOutputNumberEntity(CoordinatorEntity[PoolSyncDataUpdateCoordi
                 "NUMBER_ENTITY %s: Failed to set new value %d: %s",
                 self.entity_description.key, new_value, e
             )
-            raise HomeAssistantError(f"Failed to set chlorine output to {new_value}%: {e}") from e
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        coordinator_available = super().available
-        # Check if the specific data path for the current value exists
-        value_exists = _get_value_from_path(self.coordinator.data, self._data_path) is not None
-        is_available = coordinator_available and value_exists
-        # _LOGGER.debug(
-        #     "NUMBER_ENTITY %s: Availability check: coordinator_available=%s, value_exists_at_path=%s, final_available=%s",
-        #     self.entity_description.key, coordinator_available, value_exists, is_available
-        # )
-        return is_available
-
+            raise HomeAssistantError(f"Failed to set value: {e}")
