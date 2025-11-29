@@ -13,7 +13,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONCENTRATION_PARTS_PER_MILLION,
     PERCENTAGE,
-    UnitOfTemperature,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
@@ -24,7 +23,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
-from homeassistant.util.unit_system import METRIC_SYSTEM
 
 from .const import (
     DOMAIN,
@@ -35,16 +33,6 @@ from .const import (
 from .coordinator import PoolSyncDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
-
-def _change_temperature_unit(description, is_metric):
-    if is_metric:
-        return description
-        
-    if description.native_unit_of_measurement is UnitOfTemperature.CELSIUS:      
-        description = dataclasses.replace(description,native_unit_of_measurement=UnitOfTemperature.FAHRENHEIT)
-        
-    return description
-
 
 def _get_value_from_path(data: Optional[Dict[str, Any]], path: List[Union[str, int]]) -> Any:
     """Safely retrieve a value from a nested dictionary using a path list."""
@@ -59,22 +47,21 @@ def _get_value_from_path(data: Optional[Dict[str, Any]], path: List[Union[str, i
                 if not isinstance(value, dict):
                     return None
                 value = value.get(key_or_index)
-            elif isinstance(key_or_index, int): # Should not be needed for current paths
+            elif isinstance(key_or_index, int):  # Should not be needed for current paths
                 if not isinstance(value, list) or not (0 <= key_or_index < len(value)):
                     return None
                 value = value[key_or_index]
             else:
-                return None # Invalid path component type
+                return None  # Invalid path component type
         return value
     except (KeyError, IndexError, TypeError):
         return None
 
-# Corrected SENSOR_DESCRIPTIONS paths
+# Use custom '°C' string for temperature units to prevent HA auto-conversion
 SENSOR_DESCRIPTIONS_CHLORSYNC: Tuple[Tuple[SensorEntityDescription, List[str], Optional[Callable[[Any], Any]]], ...] = (
-    # --- ChlorSync Device Sensors (data from `devices.0`) ---
     (SensorEntityDescription(
         key="water_temp", name="Water Temperature", icon="mdi:coolant-temperature",
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS, device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement='°C', device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1,
     ), ["devices", CHLORINATOR_ID, "status", "waterTemp"], None),
     (SensorEntityDescription(
@@ -89,7 +76,7 @@ SENSOR_DESCRIPTIONS_CHLORSYNC: Tuple[Tuple[SensorEntityDescription, List[str], O
     (SensorEntityDescription(
         key="chlor_output_setting", name="Chlorinator Output Setting", icon="mdi:percent-circle",
         native_unit_of_measurement=PERCENTAGE, state_class=SensorStateClass.MEASUREMENT,
-    ), ["devices", CHLORINATOR_ID, "config", "chlorOutput"], None), # This is the sensor for the setting
+    ), ["devices", CHLORINATOR_ID, "config", "chlorOutput"], None),
     (SensorEntityDescription(
         key="boost_remaining", name="Boost Time Remaining", icon="mdi:timer-sand", native_unit_of_measurement=None,
         state_class=SensorStateClass.MEASUREMENT,
@@ -123,10 +110,9 @@ SENSOR_DESCRIPTIONS_CHLORSYNC: Tuple[Tuple[SensorEntityDescription, List[str], O
     ), ["devices", CHLORINATOR_ID, "system", "cellHwVersion"], None),
 )
 SENSOR_DESCRIPTIONS_POOLSYNC: Tuple[Tuple[SensorEntityDescription, List[str], Optional[Callable[[Any], Any]]], ...] = (    
-    # --- System Wide Sensors (data from `poolSync`) ---
     (SensorEntityDescription(
         key="board_temp", name="Board Temperature", icon="mdi:thermometer-lines",
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS, device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement='°C', device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT, entity_registry_enabled_default=False, entity_category=EntityCategory.DIAGNOSTIC,
         suggested_display_precision=0,
     ), ["poolSync", "status", "boardTemp"], None),
@@ -154,15 +140,14 @@ SENSOR_DESCRIPTIONS_POOLSYNC: Tuple[Tuple[SensorEntityDescription, List[str], Op
     ), ["poolSync", "stats", "upTimeSecs"], None),
 )
 SENSOR_DESCRIPTIONS_HEATPUMP: Tuple[Tuple[SensorEntityDescription, List[str], Optional[Callable[[Any], Any]]], ...] = (    
-    # --- HeatPump Device Sensors (data from `devices.0`) ---
     (SensorEntityDescription(
         key="hp_water_temp", name="Water Temperature", icon="mdi:coolant-temperature",
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS, device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement='°C', device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1,
     ), ["devices", HEATPUMP_ID, "status", "waterTemp"], None),
     (SensorEntityDescription(
         key="hp_air_temp", name="Air Temperature", icon="mdi:coolant-temperature",
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS, device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement='°C', device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1,
     ), ["devices", HEATPUMP_ID, "status", "airTemp"], None),
     (SensorEntityDescription(
@@ -171,7 +156,7 @@ SENSOR_DESCRIPTIONS_HEATPUMP: Tuple[Tuple[SensorEntityDescription, List[str], Op
     ), ["devices", HEATPUMP_ID, "config", "mode"], None),
     (SensorEntityDescription(
         key="hp_setpoint_temp", name="SetPoint Temperature", icon="mdi:coolant-temperature",
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS, device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement='°C', device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1,
     ), ["devices", HEATPUMP_ID, "config", "setpoint"], None),
 )
@@ -196,21 +181,16 @@ async def async_setup_entry(
         temp = [key for key, value in deviceTypes.items() if value == "chlorSync"]
         chlor_id = temp[0] if temp else "-1"
     
-    # change temperature unit
-    is_metric = hass.config.units is METRIC_SYSTEM
-    
     for description, data_path, value_fn in SENSOR_DESCRIPTIONS_POOLSYNC:
         sensors_to_add.append(PoolSyncSensor(coordinator, description, data_path, value_fn))
         
     if chlor_id != "-1":
         for description, data_path, value_fn in SENSOR_DESCRIPTIONS_CHLORSYNC:
-            description = _change_temperature_unit(description, is_metric)
             data_path[1] = chlor_id
             sensors_to_add.append(PoolSyncSensor(coordinator, description, data_path, value_fn))
     
     if heatpump_id != "-1":
         for description, data_path, value_fn in SENSOR_DESCRIPTIONS_HEATPUMP:         
-            description = _change_temperature_unit(description, is_metric)
             data_path[1] = heatpump_id
             sensors_to_add.append(PoolSyncSensor(coordinator, description, data_path, value_fn))
         
@@ -233,26 +213,24 @@ class PoolSyncSensor(CoordinatorEntity[PoolSyncDataUpdateCoordinator], SensorEnt
 
     @property
     def native_value(self) -> StateType:
+        """Return the state of the sensor (convert from °F if temperature)."""
         value = _get_value_from_path(self.coordinator.data, self._data_path)
-        if value is None: return None
-        if self._value_fn:
-            try: return self._value_fn(value)
+        if value is None:
+            return None
+        if self._value_fn is not None:
+            try:
+                return self._value_fn(value)
             except Exception as e:
-                _LOGGER.error("Sensor %s: Error processing value '%s' with value_fn: %s", self.entity_description.key, value, e)
+                _LOGGER.error(
+                    "Sensor %s: Error applying value function to raw value %s: %s",
+                    self.entity_description.key, value, e
+                )
                 return None
-        if isinstance(value, (str, int, float)) or value is None: return value
-        try: return str(value)
-        except Exception: return None
-
-    @property
-    def available(self) -> bool:
-        coordinator_available = super().available
-        val_at_path = _get_value_from_path(self.coordinator.data, self._data_path)
-        value_is_present_and_processable = False
-        if val_at_path is not None:
-            if self._value_fn:
-                try: value_is_present_and_processable = self._value_fn(val_at_path) is not None
-                except Exception: value_is_present_and_processable = False
-            else:
-                value_is_present_and_processable = True
-        return coordinator_available and value_is_present_and_processable
+        # Convert API °F to °C if this is a temperature sensor
+        if self.entity_description.device_class == SensorDeviceClass.TEMPERATURE:
+            try:
+                value = float(value)
+                value = (value - 32) * 5 / 9
+            except (ValueError, TypeError):
+                pass
+        return value
