@@ -10,7 +10,6 @@ from homeassistant.components.number import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
-    UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -40,14 +39,14 @@ NUMBER_DESCRIPTIONS_CHLOR: tuple[NumberEntityDescription, List[str], Optional[Ca
     ), ["devices", CHLORINATOR_ID, "config", "chlorOutput"], None),
 )
 
-# Force Celsius for heatpump (min/max/step adjusted for °C)
+# Force Celsius with custom unit, converted ranges (approx 40-104°F)
 NUMBER_DESCRIPTIONS_HEATPUMP: tuple[NumberEntityDescription, List[str], Optional[Callable[[Any], Any]]] = (
     (NumberEntityDescription(
         key="temperature_output_control",
         name="Temperature Output",
         icon="mdi:knob",
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        native_min_value=5,
+        native_unit_of_measurement='°C',
+        native_min_value=4.4,
         native_max_value=40,
         native_step=0.5,
         mode=NumberMode.SLIDER,
@@ -193,7 +192,7 @@ class PoolSyncChlorOutputNumberEntity(CoordinatorEntity[PoolSyncDataUpdateCoordi
         try:
             num_value = float(value)
             # Convert API °F to °C if this is a temperature entity
-            if self.entity_description.native_unit_of_measurement == UnitOfTemperature.CELSIUS:
+            if self.entity_description.native_unit_of_measurement == '°C':
                 num_value = (num_value - 32) * 5 / 9
             return num_value
         except (ValueError, TypeError):
@@ -207,7 +206,7 @@ class PoolSyncChlorOutputNumberEntity(CoordinatorEntity[PoolSyncDataUpdateCoordi
         """Update the current value (convert to °F if temperature before sending)."""
         new_value = value
         # Convert °C to °F if this is a temperature entity (API expects °F)
-        if self.entity_description.native_unit_of_measurement == UnitOfTemperature.CELSIUS:
+        if self.entity_description.native_unit_of_measurement == '°C':
             new_value = (new_value * 9 / 5) + 32
         new_value = int(new_value)  # API expects integer
         datapath = self._data_path
